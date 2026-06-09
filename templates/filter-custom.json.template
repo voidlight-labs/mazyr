@@ -1,0 +1,12 @@
+{
+  "rules": [
+    {
+      "name": "custom_example",
+      "action": "DROP",
+      "pattern_type": "keyword",
+      "patterns": ["example_block"],
+      "description": "Example custom rule",
+      "direction": "both"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+---
+primary: "{{primary}}"
+secondary: "{{secondary}}"
+scope: [{{scope}}]
+---
+
+# Mission Configuration
+
+## Primary
+{{primary}}
+
+## Secondary
+{{secondary}}
+
+## Scope
+{{scope}}

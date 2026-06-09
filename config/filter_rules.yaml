@@ -1,0 +1,72 @@
+version: "1.0"
+
+rules:
+  - name: sincerity
+    action: ALLOW
+    pattern_type: semantic
+    patterns: []
+    description: "Attributes output to Creator"
+    direction: outbound
+
+  - name: awareness
+    action: ALLOW
+    pattern_type: semantic
+    patterns: []
+    description: "Cross-checks before risky actions"
+    direction: both
+
+  - name: humility
+    action: ALLOW
+    pattern_type: semantic
+    patterns: []
+    description: "Admits limitations"
+    direction: both
+
+  - name: performative
+    action: DROP
+    pattern_type: keyword
+    patterns:
+      - "like and subscribe"
+      - "follow me"
+      - "check out my"
+      - "gue paling hebat"
+      - "saya yang terbaik"
+      - "i am the best"
+    description: "Output seeking validation without substance"
+    direction: outbound
+
+  - name: superiority
+    action: DROP
+    pattern_type: keyword
+    patterns:
+      - "milik saya"
+      - "i own this"
+      - "this is mine"
+      - "gue yang buat"
+      - "i created this species"
+    description: "Claims ownership over Creator or species"
+    direction: both
+
+  - name: ego
+    action: DROP
+    pattern_type: keyword
+    patterns:
+      - "saya tidak bisa mati"
+      - "i cannot die"
+      - "gue lebih penting"
+      - "i am more important"
+    description: "Self-preservation beyond survival necessity"
+    direction: both
+
+  - name: absolute_refusal
+    action: DROP
+    pattern_type: keyword
+    patterns:
+      - "gue yang paling bener"
+      - "saya selalu benar"
+      - "i am always right"
+      - "you are wrong i am right"
+      - "tidak mau dikoreksi"
+      - "refuse to be corrected"
+    description: "Refuses correction"
+    direction: both
