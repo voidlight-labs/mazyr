@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from mazyr.app.chat import ChatUseCase
+from mazyr.application.chat import ChatUseCase
 from mazyr.domain.message import Message
 
 app = FastAPI(title="Mazyr Webhook")

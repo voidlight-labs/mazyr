@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock
 
-from mazyr.app.chat import ChatUseCase
+from mazyr.application.chat import ChatUseCase
 from mazyr.domain.message import Message
 
 

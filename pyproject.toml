@@ -30,7 +30,6 @@ dependencies = [
     "fastapi>=0.100",
     "uvicorn>=0.23",
     "httpx>=0.24",
-    "python-dotenv>=1.0",
     "qdrant-client>=1.7",
     "websockets>=12.0",
 ]
@@ -46,12 +45,7 @@ dev = [
 ]
 
 [project.scripts]
-mazyr-init = "mazyr.interfaces.cli:init"
-mazyr-boot = "mazyr.interfaces.cli:boot"
-mazyr-status = "mazyr.interfaces.cli:status"
-mazyr-stop = "mazyr.interfaces.cli:stop"
-mazyr-sync = "mazyr.interfaces.cli:sync"
-mazyr-chat = "mazyr.interfaces.cli:chat"
+mazyr = "mazyr.interfaces.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

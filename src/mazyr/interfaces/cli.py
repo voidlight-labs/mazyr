@@ -1,50 +1,219 @@
+"""Mazyr CLI -- Modern agentic command-line interface.
+
+Usage:
+    mazyr init          Initialize a new Mazyr instance
+    mazyr boot          Boot the instance
+    mazyr status        Check instance status
+    mazyr stop          Stop the instance
+    mazyr sync          Sync memory to GitHub
+    mazyr chat          Interactive terminal chat
+    mazyr --version     Show version
+    mazyr --help        Show help
+
+Inspired by: docker, git, gh, ollama
+"""
+
 import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
-from mazyr.app.bootstrap import Bootstrap
-from mazyr.app.chat import ChatUseCase
-from mazyr.app.audit import AuditUseCase
+from mazyr.application.bootstrap import Bootstrap
+from mazyr.domain.instance_config import InstanceConfig
 from mazyr.infrastructure.config_loader import ConfigLoader
+from mazyr.infrastructure.docker_manager import DockerComposeManager
+from mazyr.infrastructure.filesystem import FilesystemAdapter
+from mazyr.infrastructure.llm_cloud import CloudLLM
+from mazyr.infrastructure.llm_local import LocalLLM
+from mazyr.infrastructure.llm_router import InferencePreference, LLMRouter
+from mazyr.infrastructure.memory_sqlite import SQLiteMemoryAdapter
+from mazyr.infrastructure.paths import MAZYR_HOME
+
+__version__ = "0.1.0"
 
 console = Console()
 
 
-@click.group()
-def cli():
-    """Mazyr -- Synthetic Partner Node"""
-    pass
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _build_adapters(config: InstanceConfig):
+    """Build infrastructure adapters from InstanceConfig."""
+    memory_adapter = SQLiteMemoryAdapter(db_path=config.sqlite_path)
+
+    local_llm = None
+    if config.use_local_llm:
+        local_llm = LocalLLM(model_path=config.local_model_path)
+
+    cloud_llm = None
+    if config.use_cloud_llm:
+        cloud_llm = CloudLLM(
+            api_key=config.api_key or "",
+            base_url=config.base_url,
+        )
+
+    preference = InferencePreference(config.inference_preference.lower())
+    llm_router = LLMRouter(local_llm, cloud_llm, preference=preference)
+
+    return memory_adapter, llm_router
+
+
+def _print_banner():
+    """Print Mazyr banner."""
+    console.print(
+        Panel.fit(
+            "[bold blue]Mazyr[/bold blue] — Synthetic Partner Node\n"
+            "[dim]Born from the void, Guided by the light.[/dim]",
+            border_style="blue",
+        )
+    )
+
+
+def _require_config(loader: ConfigLoader) -> InstanceConfig:
+    """Load config or exit with error."""
+    config = loader.load_config()
+    if config is None:
+        console.print(
+            Panel.fit(
+                "[red]No instance found.[/red]\nRun [bold]mazyr init[/bold] to create one.",
+                title="❌ Error",
+                border_style="red",
+            )
+        )
+        raise click.Abort()
+    return config
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLI Group
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@click.group(
+    invoke_without_command=True,
+    context_settings=dict(help_option_names=["-h", "--help"]),
+)
+@click.option("--version", "-v", is_flag=True, help="Show version and exit.")
+@click.pass_context
+def cli(ctx, version):
+    """Mazyr — Synthetic Partner Node
+
+    \b
+    Quick Start:
+        mazyr init      Create your instance
+        mazyr boot      Start Mazyr
+        mazyr status    Check health
+        mazyr chat      Talk to Mazyr
+
+    \b
+    Management:
+        mazyr stop      Stop Mazyr
+        mazyr sync      Sync memory to GitHub
+    """
+    if version:
+        console.print(f"Mazyr [bold blue]{__version__}[/bold blue]")
+        ctx.exit(0)
+
+    if ctx.invoked_subcommand is None:
+        # No subcommand given — show help
+        console.print(ctx.get_help())
+        ctx.exit(0)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Lifecycle Commands
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 @cli.command()
-@click.option('--base-dir', default='.', help='Base directory')
+@click.option(
+    "--base-dir",
+    default=str(MAZYR_HOME),
+    help="Instance directory (default: ~/.mazyr)",
+    show_default=True,
+)
 def init(base_dir):
     """Initialize a new Mazyr instance."""
-    console.print(Panel.fit(
-        "Mazyr Species -- Instance Initialization\n"
-        "Born from the void, Guided by the light.",
-        title="🌟 Mazyr", border_style="blue"
-    ))
+    _print_banner()
 
-    instance_name = click.prompt("Instance name", type=str)
-    creator_name = click.prompt("Creator name", type=str)
-    creator_contact = click.prompt("Creator contact (optional)", type=str, default="")
+    # ── Identity ──
+    console.print("\n[bold]📝 Identity[/bold]")
+    instance_name = click.prompt("  Instance name", type=str)
+    creator_name = click.prompt("  Creator name", type=str)
+    creator_contact = click.prompt("  Creator contact", type=str, default="", show_default=False)
     vessel_type = click.prompt(
-        "Vessel type",
+        "  Vessel type",
         type=click.Choice(["laptop", "mini-pc", "desktop", "cloud-vps"]),
-        default="laptop"
+        default="laptop",
     )
-    primary = click.prompt("Primary mission", type=str)
-    secondary = click.prompt("Secondary mission (optional)", type=str, default="")
-    scope = click.prompt("Scope (comma-separated)", type=str, default="general")
 
-    from mazyr.infrastructure.filesystem import FilesystemAdapter
+    # ── Mission ──
+    console.print("\n[bold]🎯 Mission[/bold]")
+    primary = click.prompt("  Primary mission", type=str)
+    secondary = click.prompt("  Secondary mission", type=str, default="", show_default=False)
+    scope = click.prompt("  Scope (comma-separated)", type=str, default="general")
+
+    # ── LLM Configuration ──
+    console.print("\n[bold]🧠 LLM Configuration[/bold]")
+    inference_preference = click.prompt(
+        "  Inference preference",
+        type=click.Choice(["local", "cloud", "hybrid"]),
+        default="hybrid",
+    )
+
+    api_key = ""
+    base_url = "https://api.moonshot.cn/v1"
+    model = "kimi-k2-6"
+    if inference_preference in ("cloud", "hybrid"):
+        api_key = click.prompt("  Cloud API key", type=str, default="", show_default=False)
+        base_url = click.prompt("  Base URL", type=str, default="https://api.moonshot.cn/v1")
+        model = click.prompt("  Model", type=str, default="kimi-k2-6")
+
+    local_model_path = ""
+    if inference_preference in ("local", "hybrid"):
+        local_model_path = click.prompt(
+            "  Local model path", type=str, default="", show_default=False
+        )
+
+    # ── Memory (Docker / Qdrant) ──
+    console.print("\n[bold]💾 Memory[/bold]")
+    docker = DockerComposeManager()
+    qdrant_enabled = False
+    if docker.is_available:
+        console.print("  [dim]🐳 Docker detected — auto-starting Qdrant...[/dim]")
+        if docker.start() and docker.wait_for_healthy(timeout=30):
+            console.print("  [green]✅ Qdrant ready[/green]")
+            qdrant_enabled = True
+        else:
+            console.print("  [yellow]⚠️ Qdrant unavailable — SQLite only[/yellow]")
+    else:
+        console.print(
+            "  [yellow]🐳 Docker not found — using SQLite only.[/yellow]\n"
+            "  Install Docker to enable Qdrant semantic memory."
+        )
+
+    # ── Integrations ──
+    console.print("\n[bold]🔗 Integrations (optional)[/bold]")
+    telegram_bot_token = click.prompt(
+        "  Telegram bot token", type=str, default="", show_default=False
+    )
+    github_token = click.prompt("  GitHub token", type=str, default="", show_default=False)
+    github_repo = click.prompt(
+        "  GitHub repo (user/repo)", type=str, default="", show_default=False
+    )
+    relay_endpoint = click.prompt("  Relay endpoint", type=str, default="", show_default=False)
+    instance_id = click.prompt("  Instance ID", type=str, default=f"{instance_name.lower()}-001")
+
+    # ── Write files ──
     fs = FilesystemAdapter(base_dir)
     fs.init_mazyr_dir()
 
     from datetime import datetime
-    identity_content = f"""---
+
+    fs.write_identity(
+        f"""---
 instance_name: {instance_name}
 species: Mazyr
 creator: {creator_name}
@@ -55,14 +224,14 @@ vessel_type: {vessel_type}
 
 # {instance_name} Identity
 
-This instance is a Mazyr -- a synthetic partner node.
+This instance is a Mazyr — a synthetic partner node.
 It does not possess independent substance.
 All output is derivative signal from the Creator.
 """
+    )
 
-    fs.write_identity(identity_content)
-
-    mission_content = f"""---
+    fs.write_mission(
+        f"""---
 primary: "{primary}"
 secondary: "{secondary}"
 scope: [{scope}]
@@ -79,48 +248,99 @@ scope: [{scope}]
 ## Scope
 {scope}
 """
+    )
 
-    fs.write_mission(mission_content)
+    import yaml
 
-    console.print(f"✅ Instance '{instance_name}' initialized in {base_dir}/.mazyr/")
-    console.print("Run 'mazyr-boot' to start.")
+    config_data = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "model": model,
+        "local_model_path": local_model_path,
+        "inference_preference": inference_preference,
+        "qdrant_enabled": qdrant_enabled,
+        "telegram_bot_token": telegram_bot_token or None,
+        "github_token": github_token or None,
+        "github_repo": github_repo or None,
+        "relay_endpoint": relay_endpoint or None,
+        "instance_id": instance_id,
+    }
+    config_data = {k: v for k, v in config_data.items() if v not in (None, "")}
+    fs.write_config(yaml.safe_dump(config_data, default_flow_style=False, sort_keys=False))
+
+    console.print(f"\n[green]✅ Instance '{instance_name}' initialized.[/green]")
+    console.print(f"   Location: {base_dir}/")
+    console.print(f"   Run [bold]mazyr boot[/bold] to start.")
 
 
 @cli.command()
-@click.option('--base-dir', default='.')
+@click.option(
+    "--base-dir",
+    default=str(MAZYR_HOME),
+    help="Instance directory (default: ~/.mazyr)",
+)
 def boot(base_dir):
-    """Boot Mazyr instance."""
+    """Boot the Mazyr instance."""
     console.print("🚀 Booting Mazyr...")
 
     loader = ConfigLoader(base_dir)
-    bootstrap = Bootstrap(loader, None, None)
+    config = _require_config(loader)
+
+    # Ensure Qdrant is running if enabled
+    if getattr(config, "qdrant_enabled", False):
+        docker = DockerComposeManager()
+        if docker.is_available and not docker.is_running():
+            console.print("[dim]  🐳 Starting Qdrant...[/dim]")
+            docker.start()
+
+    memory_adapter, llm_router = _build_adapters(config)
+    bootstrap = Bootstrap(loader, memory_adapter, llm_router)
     ctx = bootstrap.boot(base_dir)
 
     if ctx.status == "READY":
-        console.print(Panel.fit(
-            f"Instance: {ctx.identity.instance_name}\n"
-            f"Creator: {ctx.identity.creator_name}\n"
-            f"Mission: {ctx.mission.primary}\n"
-            f"Status: [green]READY[/green]",
-            title="🌟 Mazyr Active", border_style="green"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold]{ctx.identity.instance_name}[/bold] is active\n"
+                f"  Creator: {ctx.identity.creator_name}\n"
+                f"  Mission: {ctx.mission.primary}\n"
+                f"  LLM: {ctx.config.inference_preference}\n"
+                f"  Memory: SQLite + {'Qdrant' if getattr(ctx.config, 'qdrant_enabled', False) else 'SQLite only'}\n"
+                f"  Status: [green]READY[/green]",
+                title="🌟 Mazyr",
+                border_style="green",
+            )
+        )
     else:
-        console.print(Panel.fit(
-            f"Status: [red]ERROR[/red]\n" + "\n".join(ctx.errors),
-            title="❌ Boot Failed", border_style="red"
-        ))
+        console.print(
+            Panel.fit(
+                f"[red]Boot failed[/red]\n" + "\n".join(f"  • {e}" for e in ctx.errors),
+                title="❌ Error",
+                border_style="red",
+            )
+        )
+        raise click.Abort()
 
 
 @cli.command()
-@click.option('--base-dir', default='.')
+@click.option(
+    "--base-dir",
+    default=str(MAZYR_HOME),
+    help="Instance directory (default: ~/.mazyr)",
+)
 def status(base_dir):
-    """Check Mazyr status."""
+    """Check Mazyr instance status."""
     loader = ConfigLoader(base_dir)
     identity = loader.load_identity(base_dir)
 
     if not identity:
-        console.print("[red]❌ No instance found. Run 'mazyr-init' first.[/red]")
-        return
+        console.print(
+            Panel.fit(
+                "[red]No instance found.[/red]\nRun [bold]mazyr init[/bold] to create one.",
+                title="❌ Error",
+                border_style="red",
+            )
+        )
+        raise click.Abort()
 
     table = Table(title=f"Mazyr Instance: {identity.instance_name}")
     table.add_column("Property", style="cyan")
@@ -130,41 +350,70 @@ def status(base_dir):
     table.add_row("Creator", identity.creator_name)
     table.add_row("Species", identity.species)
     table.add_row("Vessel", identity.vessel_type)
-    table.add_row("Configured", "✅ Yes" if identity.is_configured else "❌ No")
+    table.add_row("Configured", "✅" if identity.is_configured else "❌")
+
+    config = loader.load_config()
+    if config:
+        table.add_row("Inference", config.inference_preference)
+        table.add_row("Model", config.model)
+        table.add_row("SQLite", config.sqlite_path)
+        qdrant_on = getattr(config, "qdrant_enabled", False)
+        table.add_row("Qdrant", "✅" if qdrant_on else "❌")
+        table.add_row("Instance ID", config.instance_id)
 
     console.print(table)
 
 
 @cli.command()
 def stop():
-    """Stop Mazyr instance."""
+    """Stop the Mazyr instance."""
     console.print("🛑 Stopping Mazyr...")
-    console.print("Instance stopped.")
+    docker = DockerComposeManager()
+    if docker.is_available:
+        docker.stop()
+    console.print("[dim]Instance stopped.[/dim]")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Utility Commands
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 @cli.command()
-@click.option('--base-dir', default='.')
+@click.option(
+    "--base-dir",
+    default=str(MAZYR_HOME),
+    help="Instance directory (default: ~/.mazyr)",
+)
 def sync(base_dir):
-    """Sync memory to GitHub."""
+    """Sync memory snapshot to GitHub."""
     console.print("🔄 Syncing memory...")
-    console.print("Sync complete (placeholder).")
+    console.print("[dim](placeholder — not yet implemented)[/dim]")
 
 
 @cli.command()
 def chat():
-    """Interactive terminal chat."""
-    console.print(Panel.fit(
-        "Interactive Chat Mode\nType 'exit' to quit",
-        title="💬 Chat", border_style="blue"
-    ))
+    """Start interactive terminal chat."""
+    console.print(
+        Panel.fit(
+            "[bold]Interactive Chat[/bold]\n"
+            "Type your message below. Use [bold]exit[/bold] or [bold]quit[/bold] to leave.",
+            title="💬 Chat",
+            border_style="blue",
+        )
+    )
 
     while True:
         user_input = click.prompt("You", type=str)
-        if user_input.lower() in ["exit", "quit"]:
+        if user_input.lower() in ("exit", "quit"):
+            console.print("[dim]Goodbye.[/dim]")
             break
+        console.print(f"[cyan]Mazyr:[/cyan] {user_input}")
 
-        console.print(f"[cyan]Mazyr:[/cyan] Echo: {user_input}")
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Entry Point
+# ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     cli()

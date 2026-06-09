@@ -1,22 +1,24 @@
-import os
-import yaml
 from pathlib import Path
 from typing import Optional
 
+import yaml
+
+from mazyr.domain.filter import FilterAction, FilterRule
 from mazyr.domain.identity import Identity, Mission
-from mazyr.domain.filter import FilterRule, FilterAction
+from mazyr.domain.instance_config import InstanceConfig
+from mazyr.infrastructure.paths import MAZYR_HOME
 
 
 class ConfigLoader:
     """Loads configuration from .mazyr/ directory. Validates using Domain Layer entities."""
 
-    def __init__(self, base_dir: str = "."):
-        self.base_dir = Path(base_dir)
-        self.mazyr_dir = self.base_dir / ".mazyr"
+    def __init__(self, base_dir: str | Path | None = None):
+        self.base_dir = Path(base_dir) if base_dir else MAZYR_HOME
+        self.mazyr_dir = self.base_dir
 
-    def load_identity(self, base_dir: str = None) -> Optional[Identity]:
+    def load_identity(self, base_dir: str | Path | None = None) -> Optional[Identity]:
         """Load identity from .mazyr/identity.md"""
-        path = Path(base_dir or self.base_dir) / ".mazyr" / "identity.md"
+        path = Path(base_dir) / "identity.md" if base_dir else self.mazyr_dir / "identity.md"
         if not path.exists():
             return None
 
@@ -30,9 +32,9 @@ class ConfigLoader:
             vessel_type=data.get("vessel_type", "laptop"),
         )
 
-    def load_mission(self, base_dir: str = None) -> Optional[Mission]:
+    def load_mission(self, base_dir: str | Path | None = None) -> Optional[Mission]:
         """Load mission from .mazyr/mission.md"""
-        path = Path(base_dir or self.base_dir) / ".mazyr" / "mission.md"
+        path = Path(base_dir) / "mission.md" if base_dir else self.mazyr_dir / "mission.md"
         if not path.exists():
             return None
 
@@ -49,6 +51,17 @@ class ConfigLoader:
             scope=scope,
         )
 
+    def load_config(self) -> Optional[InstanceConfig]:
+        """Load runtime config from .mazyr/config.yaml"""
+        path = self.mazyr_dir / "config.yaml"
+        if not path.exists():
+            return None
+
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+
+        return InstanceConfig(**data)
+
     def load_custom_rules(self) -> list[FilterRule]:
         """Load custom filter rules from .mazyr/filter-custom.json"""
         path = self.mazyr_dir / "filter-custom.json"
@@ -56,6 +69,7 @@ class ConfigLoader:
             return []
 
         import json
+
         with open(path) as f:
             data = json.load(f)
 
