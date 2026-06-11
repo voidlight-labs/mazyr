@@ -1,25 +1,23 @@
-from dataclasses import dataclass, field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
 
-@dataclass(frozen=True)
-class Identity:
-    """Core Identity of a Mazyr instance. Frozen = immutable after creation."""
+class Identity(BaseModel):
+    """Core Identity of a Mazyr instance. Validated using Pydantic as per MTS-05."""
+    instance_name: str = Field(..., min_length=1, max_length=64)
+    species: str = Field(default="Mazyr", frozen=True)
+    creator_name: str = Field(..., min_length=1, max_length=128)
+    creator_contact: Optional[str] = Field(default=None, max_length=256)
+    date_provisioned: str = Field(default="")
+    vessel_type: str = Field(default="laptop")
 
-    instance_name: str
-    species: str = "Mazyr"
-    creator_name: str = ""
-    creator_contact: Optional[str] = None
-    date_provisioned: str = ""
-    vessel_type: str = "laptop"
-
-    def __post_init__(self):
-        if not self.instance_name or not self.instance_name.strip():
-            raise ValueError("instance_name is required and cannot be empty")
-        if not self.creator_name or not self.creator_name.strip():
-            raise ValueError("creator_name is required and cannot be empty")
-        if self.vessel_type not in {"laptop", "mini-pc", "desktop", "cloud-vps"}:
-            raise ValueError(f"Invalid vessel_type: {self.vessel_type}")
+    @field_validator("vessel_type")
+    @classmethod
+    def validate_vessel(cls, v: str) -> str:
+        allowed = {"laptop", "mini-pc", "desktop", "cloud-vps"}
+        if v not in allowed:
+            raise ValueError(f"vessel_type must be one of {allowed}")
+        return v
 
     @property
     def is_configured(self) -> bool:
@@ -27,16 +25,15 @@ class Identity:
         return self.instance_name != "Mazyr" or self.creator_name != "Anonymous"
 
 
-@dataclass
-class Mission:
-    """Mission configuration determines execution branching."""
+class Mission(BaseModel):
+    """Mission configuration. Validated using Pydantic as per MTS-05."""
+    primary: str = Field(..., min_length=1, max_length=512)
+    secondary: Optional[str] = Field(default=None, max_length=512)
+    scope: list[str] = Field(default_factory=lambda: ["general"])
 
-    primary: str
-    secondary: Optional[str] = None
-    scope: list[str] = field(default_factory=lambda: ["general"])
-
-    def __post_init__(self):
-        if not self.primary or not self.primary.strip():
-            raise ValueError("primary mission is required")
-        if self.scope is None:
-            self.scope = ["general"]
+    @field_validator("scope", mode="before")
+    @classmethod
+    def parse_scope(cls, v):
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",")]
+        return v

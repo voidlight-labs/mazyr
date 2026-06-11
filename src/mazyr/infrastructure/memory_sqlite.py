@@ -1,15 +1,16 @@
 import sqlite3
-from datetime import datetime
-from typing import Optional
 from pathlib import Path
 
 from mazyr.domain.memory_entry import MemoryEntry, MemoryType
+from mazyr.infrastructure.paths import MAZYR_HOME
 
 
 class SQLiteMemoryAdapter:
     """Adapter for SQLite database."""
 
-    def __init__(self, db_path: str = "./memory/mazyr.db"):
+    def __init__(self, db_path: str | Path | None = None):
+        if db_path is None:
+            db_path = MAZYR_HOME / "memory" / "mazyr.db"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = None

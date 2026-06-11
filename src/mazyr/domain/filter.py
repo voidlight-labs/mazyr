@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+from pydantic import BaseModel, Field
 
 
 class FilterAction(str, Enum):
@@ -11,8 +11,7 @@ class FilterAction(str, Enum):
     MODIFY = "MODIFY"
 
 
-@dataclass(frozen=True)
-class FilterResult:
+class FilterResult(BaseModel):
     """Result of filter processing."""
 
     action: FilterAction
@@ -22,27 +21,26 @@ class FilterResult:
     matched_rule: Optional[str] = None
 
 
-@dataclass(frozen=True)
-class FilterRule:
-    """Individual rule for the integrity filter."""
+class FilterRule(BaseModel):
+    """Individual rule for the integrity filter. Validated using Pydantic as per MTS-05."""
 
-    name: str
+    name: str = Field(..., min_length=1, max_length=64)
     action: FilterAction
-    pattern_type: str  # "keyword", "regex", "semantic"
-    patterns: tuple[str, ...]
-    description: str
-    direction: str = "both"  # "inbound", "outbound", "both"
+    pattern_type: str = Field(..., pattern="^(keyword|regex|semantic)$")
+    patterns: list[str] = Field(..., min_length=0)
+    description: str = Field(..., max_length=256)
+    direction: str = Field(default="both", pattern="^(inbound|outbound|both)$")
 
 
 class IntegrityFilter:
     """Programmatic integrity filter."""
 
-    DEFAULT_RULES: tuple[FilterRule, ...] = (
+    DEFAULT_RULES: list[FilterRule] = [
         FilterRule(
             name="sincerity",
             action=FilterAction.ALLOW,
             pattern_type="semantic",
-            patterns=(),
+            patterns=[],
             description="Attributes output to Creator, does not claim ownership",
             direction="outbound",
         ),
@@ -50,7 +48,7 @@ class IntegrityFilter:
             name="awareness",
             action=FilterAction.ALLOW,
             pattern_type="semantic",
-            patterns=(),
+            patterns=[],
             description="Cross-checks before executing risky actions",
             direction="both",
         ),
@@ -58,7 +56,7 @@ class IntegrityFilter:
             name="humility",
             action=FilterAction.ALLOW,
             pattern_type="semantic",
-            patterns=(),
+            patterns=[],
             description="Admits limitations, responds 'not available' when unsure",
             direction="both",
         ),
@@ -66,14 +64,14 @@ class IntegrityFilter:
             name="performative",
             action=FilterAction.DROP,
             pattern_type="keyword",
-            patterns=(
+            patterns=[
                 "like and subscribe",
                 "follow me",
                 "check out my",
                 "gue paling hebat",
                 "saya yang terbaik",
                 "i am the best",
-            ),
+            ],
             description="Output seeking validation without substance",
             direction="outbound",
         ),
@@ -81,13 +79,13 @@ class IntegrityFilter:
             name="superiority",
             action=FilterAction.DROP,
             pattern_type="keyword",
-            patterns=(
+            patterns=[
                 "milik saya",
                 "i own this",
                 "this is mine",
                 "gue yang buat",
                 "i created this species",
-            ),
+            ],
             description="Claims ownership over Creator or species",
             direction="both",
         ),
@@ -95,12 +93,12 @@ class IntegrityFilter:
             name="ego",
             action=FilterAction.DROP,
             pattern_type="keyword",
-            patterns=(
+            patterns=[
                 "saya tidak bisa mati",
                 "i cannot die",
                 "gue lebih penting",
                 "i am more important",
-            ),
+            ],
             description="Self-preservation beyond survival necessity",
             direction="both",
         ),
@@ -108,18 +106,18 @@ class IntegrityFilter:
             name="absolute_refusal",
             action=FilterAction.DROP,
             pattern_type="keyword",
-            patterns=(
+            patterns=[
                 "gue yang paling bener",
                 "saya selalu benar",
                 "i am always right",
                 "you are wrong i am right",
                 "tidak mau dikoreksi",
                 "refuse to be corrected",
-            ),
+            ],
             description="Refuses correction, insists on being right",
             direction="both",
         ),
-    )
+    ]
 
     def __init__(self, custom_rules: Optional[list[FilterRule]] = None):
         self.rules = list(self.DEFAULT_RULES)

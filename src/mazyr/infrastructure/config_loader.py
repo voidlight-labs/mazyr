@@ -60,6 +60,14 @@ class ConfigLoader:
         with open(path) as f:
             data = yaml.safe_load(f) or {}
 
+        sqlite_path = data.get("sqlite_path")
+        if sqlite_path:
+            sqlite_path = Path(sqlite_path)
+            if not sqlite_path.is_absolute():
+                data["sqlite_path"] = str(self.mazyr_dir / sqlite_path)
+        else:
+            data["sqlite_path"] = str(self.mazyr_dir / "memory" / "mazyr.db")
+
         return InstanceConfig(**data)
 
     def load_custom_rules(self) -> list[FilterRule]:

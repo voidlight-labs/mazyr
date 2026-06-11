@@ -1,6 +1,7 @@
 import pytest
 
 from mazyr.domain.instance_config import InstanceConfig
+from mazyr.infrastructure.paths import MAZYR_HOME
 
 
 class TestInstanceConfig:
@@ -11,7 +12,10 @@ class TestInstanceConfig:
         assert cfg.inference_preference == "hybrid"
         assert cfg.qdrant_host == "localhost"
         assert cfg.qdrant_port == 6333
-        assert cfg.sqlite_path == "./memory/mazyr.db"
+        assert cfg.sqlite_path == str(MAZYR_HOME / "memory" / "mazyr.db")
+        assert cfg.embedding_base_url == "https://api.openai.com/v1"
+        assert cfg.embedding_model == "text-embedding-3-small"
+        assert cfg.embedding_dimensions == 1536
 
     def test_invalid_inference_preference(self):
         with pytest.raises(ValueError):
@@ -22,6 +26,10 @@ class TestInstanceConfig:
             InstanceConfig(qdrant_port=0)
         with pytest.raises(ValueError):
             InstanceConfig(qdrant_port=70000)
+
+    def test_invalid_embedding_dimensions(self):
+        with pytest.raises(ValueError):
+            InstanceConfig(embedding_dimensions=0)
 
     def test_use_cloud_llm(self):
         assert InstanceConfig(api_key="secret").use_cloud_llm is True

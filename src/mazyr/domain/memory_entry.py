@@ -1,6 +1,8 @@
-from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class MemoryType(str, Enum):
@@ -11,29 +13,27 @@ class MemoryType(str, Enum):
     PROCEDURAL = "procedural"
 
 
-@dataclass
-class MemoryEntry:
-    """A single memory entry."""
+class MemoryEntry(BaseModel):
+    """A single memory entry. Validated using Pydantic as per MTS-05."""
 
-    id: str
+    id: str = Field(..., min_length=1)
     type: MemoryType
-    content: str
-    category: str
-    source: str
-    timestamp: str
-    confidence: float = 1.0
-    metadata: dict = field(default_factory=dict)
+    content: str = Field(..., min_length=1)
+    category: str = Field(default="general", max_length=64)
+    source: str = Field(default="system", max_length=64)
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    metadata: dict = Field(default_factory=dict)
 
     def to_embedding_text(self) -> str:
         return f"[{self.category}] {self.content}"
 
 
-@dataclass
-class MemoryQuery:
+class MemoryQuery(BaseModel):
     """Query for retrieving memories."""
 
     query: str
-    types: list[MemoryType] = field(default_factory=lambda: list(MemoryType))
+    types: list[MemoryType] = Field(default_factory=lambda: [MemoryType.EPISODIC, MemoryType.SEMANTIC, MemoryType.PROCEDURAL])
     categories: Optional[list[str]] = None
     limit: int = 5
     min_confidence: float = 0.5

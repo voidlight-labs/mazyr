@@ -49,7 +49,9 @@ mazyr = "mazyr.interfaces.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
+# atau explicit:
+# pythonPath = "./.venv/bin/python"
+# 
 [tool.black]
 line-length = 100
 target-version = ['py311']
@@ -63,6 +65,12 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+[tool.pyright]
+pythonVersion = "3.11"
+pythonPlatform = "Linux"
+venvPath = "."          
+venv = ".venv"           
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

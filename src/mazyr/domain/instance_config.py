@@ -1,16 +1,10 @@
-from dataclasses import dataclass, field
 from typing import Optional
+from pydantic import BaseModel, Field, field_validator
+from mazyr.infrastructure.paths import MAZYR_HOME
 
 
-@dataclass
-class InstanceConfig:
-    """Runtime configuration for a Mazyr instance.
-
-    All values are collected during `mazyr-init` and persisted in
-    `.mazyr/config.yaml`. No environment variables or .env files are used.
-
-    SQLite path and Qdrant connection are fixed (managed by Docker Compose).
-    """
+class InstanceConfig(BaseModel):
+    """Runtime configuration for a Mazyr instance. Validated using Pydantic as per MTS-05."""
 
     # LLM Configuration
     api_key: Optional[str] = None
@@ -21,13 +15,19 @@ class InstanceConfig:
     local_model_path: str = ""
 
     # Inference Preference: local, cloud, hybrid
-    inference_preference: str = "hybrid"
+    inference_preference: str = Field(default="hybrid", pattern="^(local|cloud|hybrid)$")
 
     # Memory (fixed paths, managed by Docker Compose)
-    sqlite_path: str = field(default="./memory/mazyr.db", repr=False)
+    sqlite_path: str = Field(
+        default_factory=lambda: str(MAZYR_HOME / "memory" / "mazyr.db")
+    )
     qdrant_host: str = "localhost"
-    qdrant_port: int = 6333
+    qdrant_port: int = Field(default=6333, ge=1, le=65535)
     qdrant_enabled: bool = False
+    embedding_api_key: Optional[str] = None
+    embedding_base_url: str = "https://api.openai.com/v1"
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = Field(default=1536, ge=1)
 
     # Messenger
     telegram_bot_token: Optional[str] = None
@@ -39,15 +39,6 @@ class InstanceConfig:
     # Relay
     relay_endpoint: Optional[str] = None
     instance_id: str = "mazyr-001"
-
-    def __post_init__(self):
-        if self.inference_preference not in {"local", "cloud", "hybrid"}:
-            raise ValueError(
-                f"inference_preference must be one of local/cloud/hybrid, "
-                f"got {self.inference_preference}"
-            )
-        if self.qdrant_port < 1 or self.qdrant_port > 65535:
-            raise ValueError(f"qdrant_port must be 1-65535, got {self.qdrant_port}")
 
     @property
     def use_cloud_llm(self) -> bool:

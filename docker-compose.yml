@@ -6,7 +6,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - ./memory/qdrant_storage:/qdrant/storage
+      - ${MAZYR_QDRANT_STORAGE:-${HOME}/.mazyr/memory/qdrant_storage}:/qdrant/storage
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
       - QDRANT__SERVICE__GRPC_PORT=6334

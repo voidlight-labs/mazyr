@@ -3,12 +3,15 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from mazyr.infrastructure.paths import MAZYR_HOME
+
 
 class DockerComposeManager:
     """Manages Qdrant container via Docker Compose."""
 
     def __init__(self, compose_file: Optional[str] = None):
         self.compose_file = Path(compose_file) if compose_file else Path("docker-compose.yml")
+        self.qdrant_storage_dir = MAZYR_HOME / "memory" / "qdrant_storage"
         self._available = None
 
     @property
@@ -59,8 +62,17 @@ class DockerComposeManager:
         if not self.is_available:
             return False
 
+        self.qdrant_storage_dir.mkdir(parents=True, exist_ok=True)
         cmd = self._compose_cmd("up", "-d", "qdrant")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            env={
+                **__import__("os").environ,
+                "MAZYR_QDRANT_STORAGE": str(self.qdrant_storage_dir),
+            },
+        )
         return result.returncode == 0
 
     def stop(self) -> bool:

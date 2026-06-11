@@ -19,14 +19,20 @@ from rich.panel import Panel
 from rich.table import Table
 
 from mazyr.application.bootstrap import Bootstrap
+from mazyr.application.chat import ChatUseCase
 from mazyr.domain.instance_config import InstanceConfig
+from mazyr.domain.message import Message
 from mazyr.infrastructure.config_loader import ConfigLoader
 from mazyr.infrastructure.docker_manager import DockerComposeManager
+from mazyr.infrastructure.embeddings_openai import OpenAIEmbeddingAdapter
 from mazyr.infrastructure.filesystem import FilesystemAdapter
 from mazyr.infrastructure.llm_cloud import CloudLLM
 from mazyr.infrastructure.llm_local import LocalLLM
 from mazyr.infrastructure.llm_router import InferencePreference, LLMRouter
+from mazyr.infrastructure.memory_qdrant import QdrantMemoryAdapter
+from mazyr.infrastructure.memory_router import MemoryRouter
 from mazyr.infrastructure.memory_sqlite import SQLiteMemoryAdapter
+from mazyr.infrastructure.messenger_telegram import TelegramAdapter
 from mazyr.infrastructure.paths import MAZYR_HOME
 
 __version__ = "0.1.0"
@@ -41,7 +47,27 @@ console = Console()
 
 def _build_adapters(config: InstanceConfig):
     """Build infrastructure adapters from InstanceConfig."""
-    memory_adapter = SQLiteMemoryAdapter(db_path=config.sqlite_path)
+    sqlite_memory = SQLiteMemoryAdapter(db_path=config.sqlite_path)
+    semantic_memory = None
+    if config.qdrant_enabled:
+        embedding_key = config.embedding_api_key
+        if not embedding_key and "api.openai.com" in config.base_url:
+            embedding_key = config.api_key
+        embedder = None
+        if embedding_key:
+            embedder = OpenAIEmbeddingAdapter(
+                api_key=embedding_key,
+                base_url=config.embedding_base_url,
+                model=config.embedding_model,
+                dimensions=config.embedding_dimensions,
+            )
+        semantic_memory = QdrantMemoryAdapter(
+            host=config.qdrant_host,
+            port=config.qdrant_port,
+            vector_size=config.embedding_dimensions,
+            embedder=embedder,
+        )
+    memory_adapter = MemoryRouter(sqlite_memory, semantic_memory)
 
     local_llm = None
     if config.use_local_llm:
@@ -52,6 +78,7 @@ def _build_adapters(config: InstanceConfig):
         cloud_llm = CloudLLM(
             api_key=config.api_key or "",
             base_url=config.base_url,
+            model=config.model,
         )
 
     preference = InferencePreference(config.inference_preference.lower())
@@ -84,6 +111,53 @@ def _require_config(loader: ConfigLoader) -> InstanceConfig:
         )
         raise click.Abort()
     return config
+
+
+def _telegram_handler(chat_use_case: ChatUseCase, telegram: TelegramAdapter):
+    """Build a Telegram polling handler around the chat use case."""
+
+    def handle(payload: dict):
+        from datetime import datetime
+
+        message = Message(
+            id=str(payload.get("message_id", "unknown")),
+            content=payload.get("text", ""),
+            sender=payload.get("from", "creator"),
+            platform="telegram",
+            timestamp=datetime.now().isoformat(),
+        )
+        result = chat_use_case.receive(message)
+        chat_id = payload.get("chat_id")
+        if chat_id is None:
+            return
+        if result.success:
+            telegram.send_message(chat_id, result.reply or "")
+        else:
+            telegram.send_message(chat_id, f"Error: {result.error}")
+
+    return handle
+
+
+def _run_telegram_daemon(ctx, memory_adapter, llm_router):
+    """Run Telegram long polling in the foreground."""
+    if not ctx.config.telegram_bot_token:
+        console.print(
+            Panel.fit(
+                "[red]Telegram bot token not configured.[/red]\n"
+                "Run [bold]mazyr init[/bold] and set a Telegram bot token first.",
+                title="❌ Error",
+                border_style="red",
+            )
+        )
+        raise click.Abort()
+
+    telegram = TelegramAdapter(ctx.config.telegram_bot_token)
+    chat_use_case = ChatUseCase(ctx.identity, ctx.mission, ctx.filter, memory_adapter, llm_router)
+    console.print("[green]Telegram daemon listening.[/green] Press Ctrl+C to stop.")
+    try:
+        telegram.listen(_telegram_handler(chat_use_case, telegram))
+    except KeyboardInterrupt:
+        console.print("\n[dim]Telegram daemon stopped.[/dim]")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -194,6 +268,30 @@ def init(base_dir):
             "  Install Docker to enable Qdrant semantic memory."
         )
 
+    embedding_api_key = ""
+    embedding_base_url = "https://api.openai.com/v1"
+    embedding_model = "text-embedding-3-small"
+    embedding_dimensions = 1536
+    if qdrant_enabled:
+        console.print("\n[bold]🔎 Semantic Memory Embeddings[/bold]")
+        embedding_api_key = click.prompt(
+            "  OpenAI embedding API key",
+            type=str,
+            default="",
+            show_default=False,
+        )
+        embedding_base_url = click.prompt(
+            "  Embedding base URL",
+            type=str,
+            default="https://api.openai.com/v1",
+        )
+        embedding_model = click.prompt(
+            "  Embedding model",
+            type=str,
+            default="text-embedding-3-small",
+        )
+        embedding_dimensions = click.prompt("  Embedding dimensions", type=int, default=1536)
+
     # ── Integrations ──
     console.print("\n[bold]🔗 Integrations (optional)[/bold]")
     telegram_bot_token = click.prompt(
@@ -258,7 +356,12 @@ scope: [{scope}]
         "model": model,
         "local_model_path": local_model_path,
         "inference_preference": inference_preference,
+        "sqlite_path": str(fs.memory_dir / "mazyr.db"),
         "qdrant_enabled": qdrant_enabled,
+        "embedding_api_key": embedding_api_key or None,
+        "embedding_base_url": embedding_base_url if qdrant_enabled else None,
+        "embedding_model": embedding_model if qdrant_enabled else None,
+        "embedding_dimensions": embedding_dimensions if qdrant_enabled else None,
         "telegram_bot_token": telegram_bot_token or None,
         "github_token": github_token or None,
         "github_repo": github_repo or None,
@@ -279,7 +382,12 @@ scope: [{scope}]
     default=str(MAZYR_HOME),
     help="Instance directory (default: ~/.mazyr)",
 )
-def boot(base_dir):
+@click.option(
+    "--daemon",
+    is_flag=True,
+    help="Keep running and listen for configured integrations.",
+)
+def boot(base_dir, daemon):
     """Boot the Mazyr instance."""
     console.print("🚀 Booting Mazyr...")
 
@@ -310,6 +418,8 @@ def boot(base_dir):
                 border_style="green",
             )
         )
+        if daemon:
+            _run_telegram_daemon(ctx, memory_adapter, llm_router)
     else:
         console.print(
             Panel.fit(
@@ -392,8 +502,31 @@ def sync(base_dir):
 
 
 @cli.command()
-def chat():
+@click.option(
+    "--base-dir",
+    default=str(MAZYR_HOME),
+    help="Instance directory (default: ~/.mazyr)",
+)
+def chat(base_dir):
     """Start interactive terminal chat."""
+    loader = ConfigLoader(base_dir)
+    config = _require_config(loader)
+    memory_adapter, llm_router = _build_adapters(config)
+    bootstrap = Bootstrap(loader, memory_adapter, llm_router)
+    ctx = bootstrap.boot(base_dir)
+
+    if ctx.status != "READY":
+        console.print(
+            Panel.fit(
+                f"[red]Chat unavailable[/red]\n" + "\n".join(f"  • {e}" for e in ctx.errors),
+                title="❌ Error",
+                border_style="red",
+            )
+        )
+        raise click.Abort()
+
+    chat_use_case = ChatUseCase(ctx.identity, ctx.mission, ctx.filter, memory_adapter, llm_router)
+
     console.print(
         Panel.fit(
             "[bold]Interactive Chat[/bold]\n"
@@ -408,7 +541,22 @@ def chat():
         if user_input.lower() in ("exit", "quit"):
             console.print("[dim]Goodbye.[/dim]")
             break
-        console.print(f"[cyan]Mazyr:[/cyan] {user_input}")
+
+        from datetime import datetime
+        from uuid import uuid4
+
+        message = Message(
+            id=str(uuid4()),
+            content=user_input,
+            sender="creator",
+            platform="cli",
+            timestamp=datetime.now().isoformat(),
+        )
+        result = chat_use_case.receive(message)
+        if result.success:
+            console.print(f"[cyan]{ctx.identity.instance_name}:[/cyan] {result.reply}")
+        else:
+            console.print(f"[red]Error:[/red] {result.error}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
