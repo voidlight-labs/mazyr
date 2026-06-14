@@ -8,29 +8,23 @@ from mazyr.interfaces.cli import cli
 
 
 def _write_instance(base_dir: Path):
-    (base_dir / "identity.md").write_text(
-        """---
+    (base_dir / "identity.md").write_text("""---
 instance_name: Aria
 creator: Khayren
 vessel_type: laptop
 ---
-"""
-    )
-    (base_dir / "mission.md").write_text(
-        """---
+""")
+    (base_dir / "mission.md").write_text("""---
 primary: Learn
 scope: general
 ---
-"""
-    )
-    (base_dir / "config.yaml").write_text(
-        """api_key: secret
+""")
+    (base_dir / "config.yaml").write_text("""api_key: secret
 base_url: https://api.example.test/v1
 model: test-model
 inference_preference: cloud
 sqlite_path: memory/mazyr.db
-"""
-    )
+""")
 
 
 def test_chat_command_calls_llm(monkeypatch, tmp_path):
@@ -38,6 +32,7 @@ def test_chat_command_calls_llm(monkeypatch, tmp_path):
     mock_cloud = Mock()
     mock_cloud.is_available.return_value = True
     mock_cloud.generate.return_value = "API reply"
+    mock_cloud.generate_stream.return_value = iter(["API ", "reply"])
 
     monkeypatch.setattr(cli_module, "CloudLLM", Mock(return_value=mock_cloud))
 
@@ -50,4 +45,4 @@ def test_chat_command_calls_llm(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert "Aria:" in result.output
     assert "API reply" in result.output
-    mock_cloud.generate.assert_called_once()
+    mock_cloud.generate_stream.assert_called_once()

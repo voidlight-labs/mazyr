@@ -1,0 +1,89 @@
+"""Domain ports (ABCs) for infrastructure adapters.
+
+These protocols define the runtime contract between the application layer and
+infrastructure without introducing concrete dependencies into the domain layer.
+"""
+
+from typing import Any, Optional, Protocol
+
+from mazyr.domain.memory_entry import MemoryQuery
+from mazyr.domain.memory_episodic import EpisodicEntry
+from mazyr.domain.memory_graph import GraphEdge, GraphNode
+from mazyr.domain.memory_semantic import SemanticEntry
+from mazyr.domain.skills import Skill
+from mazyr.domain.tool import ApprovalRequest, ApprovalResponse
+
+
+class WorkingMemoryPort(Protocol):
+    def get_all(self) -> list[Any]: ...
+    def clear_expired(self) -> None: ...
+
+
+class EpisodicMemoryPort(Protocol):
+    def add(self, entry: EpisodicEntry) -> None: ...
+    def get_recent(self, limit: int = 100) -> list[EpisodicEntry]: ...
+    def get_unconsolidated(self, since: str = "24h") -> list[EpisodicEntry]: ...
+    def mark_consolidated(self, ids: list[str]) -> None: ...
+
+
+class SemanticMemoryPort(Protocol):
+    def add(self, entry: SemanticEntry) -> None: ...
+    def search(self, query: MemoryQuery) -> list[SemanticEntry]: ...
+    def get_stale(self, threshold_days: int = 7) -> list[SemanticEntry]: ...
+    def update_importance(self, entry_id: str, new_score: float) -> None: ...
+    def search_by_vector(
+        self,
+        vector: list[float],
+        filter: Optional[dict] = None,
+        limit: int = 5,
+        score_threshold: float = 0.95,
+    ) -> list[SemanticEntry]: ...
+
+
+class GraphMemoryPort(Protocol):
+    def get_node(self, node_id: str) -> Optional[GraphNode]: ...
+    def traverse(
+        self,
+        start_labels: list[str],
+        max_depth: int = 2,
+        max_nodes: int = 30,
+    ) -> tuple[list[GraphNode], list[GraphEdge]]: ...
+
+
+class MemorySystemPort(Protocol):
+    working: WorkingMemoryPort
+    episodic: EpisodicMemoryPort
+    semantic: SemanticMemoryPort
+    graph: GraphMemoryPort
+
+    def connect(self) -> None: ...
+    def add(self, entry: EpisodicEntry | SemanticEntry) -> None: ...
+    def search(self, query: MemoryQuery) -> list[SemanticEntry]: ...
+    def count(self) -> dict: ...
+    def close(self) -> None: ...
+
+
+class ApprovalNotifierPort(Protocol):
+    async def notify(self, request: ApprovalRequest) -> None:
+        """Send the approval request to the Creator and return immediately."""
+        ...
+
+    async def read_response(
+        self, request: ApprovalRequest, timeout_seconds: float
+    ) -> ApprovalResponse:
+        """Wait for Creator decision. Must raise asyncio.TimeoutError on expiry."""
+        ...
+
+
+class ProceduralMemoryPort(Protocol):
+    """Runtime access to procedural memory (skills / SOPs)."""
+
+    @property
+    def active_skill(self) -> Skill | None: ...
+
+    def list_skills(self) -> list[Skill]: ...
+    def get(self, name: str) -> Skill | None: ...
+    def activate(self, name: str) -> bool: ...
+    def deactivate(self) -> None: ...
+    def reload(self) -> None: ...
+    def record_usage(self, name: str, success: bool) -> None: ...

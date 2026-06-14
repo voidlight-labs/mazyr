@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from mazyr.infrastructure.paths import MAZYR_HOME
 
 
@@ -13,14 +13,13 @@ class InstanceConfig(BaseModel):
 
     # Local LLM
     local_model_path: str = ""
+    local_llm_server_url: str = ""
 
     # Inference Preference: local, cloud, hybrid
     inference_preference: str = Field(default="hybrid", pattern="^(local|cloud|hybrid)$")
 
     # Memory (fixed paths, managed by Docker Compose)
-    sqlite_path: str = Field(
-        default_factory=lambda: str(MAZYR_HOME / "memory" / "mazyr.db")
-    )
+    sqlite_path: str = Field(default_factory=lambda: str(MAZYR_HOME / "memory" / "mazyr.db"))
     qdrant_host: str = "localhost"
     qdrant_port: int = Field(default=6333, ge=1, le=65535)
     qdrant_enabled: bool = False

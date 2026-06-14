@@ -1,14 +1,28 @@
-class AuditUseCase:
-    """Health check and drift detection for Mazyr instance."""
+"""Health-check and drift-detection use case."""
 
-    def __init__(self, identity, filter_engine, memory, constitution):
+from mazyr.domain.constitution import Constitution
+from mazyr.domain.filter import IntegrityFilter
+from mazyr.domain.identity import Identity
+from mazyr.domain.ports import MemorySystemPort
+
+
+class AuditUseCase:
+    """Health check and drift detection for a Mazyr instance."""
+
+    def __init__(
+        self,
+        identity: Identity,
+        filter_engine: IntegrityFilter,
+        memory: MemorySystemPort | None,
+        constitution: Constitution,
+    ):
         self.identity = identity
         self.filter = filter_engine
         self.memory = memory
         self.constitution = constitution
 
     def health_check(self) -> dict:
-        """Full health check."""
+        """Return a full health snapshot of the instance."""
         return {
             "identity": self._check_identity(),
             "filter": self._check_filter(),
@@ -36,17 +50,15 @@ class AuditUseCase:
         }
 
     def _check_memory(self) -> dict:
-        entries = 0
-        types = {}
+        counts: dict = {}
         if self.memory:
             try:
-                entries = self.memory.count() if hasattr(self.memory, "count") else 0
-                types = self.memory.type_distribution() if hasattr(self.memory, "type_distribution") else {}
+                counts = self.memory.count()
             except Exception:
                 pass
         return {
-            "entries": entries,
-            "types": types,
+            "entries": sum(counts.values()) if counts else 0,
+            "types": counts,
             "status": "ok",
         }
 
@@ -57,22 +69,17 @@ class AuditUseCase:
             "status": "ok",
         }
 
-    def detect_drift(self) -> list[dict]:
+    def detect_drift(self, recent_outputs: list[str]) -> list[dict]:
         """Detect if instance has drifted from original purpose."""
-        drift_signals = []
-        if self.memory and hasattr(self.memory, "recent_outputs"):
-            try:
-                recent_outputs = self.memory.recent_outputs(100)
-                if self._performative_ratio(recent_outputs) > 0.3:
-                    drift_signals.append(
-                        {
-                            "type": "performative_drift",
-                            "severity": "warning",
-                            "description": "High ratio of performative output detected",
-                        }
-                    )
-            except Exception:
-                pass
+        drift_signals: list[dict] = []
+        if self._performative_ratio(recent_outputs) > 0.3:
+            drift_signals.append(
+                {
+                    "type": "performative_drift",
+                    "severity": "warning",
+                    "description": "High ratio of performative output detected",
+                }
+            )
         return drift_signals
 
     def _performative_ratio(self, outputs: list[str]) -> float:

@@ -31,6 +31,7 @@ dependencies = [
     "uvicorn>=0.23",
     "httpx>=0.24",
     "qdrant-client>=1.7",
+    "tenacity>=8.0",
     "websockets>=12.0",
 ]
 
@@ -51,7 +52,7 @@ mazyr = "mazyr.interfaces.cli:cli"
 where = ["src"]
 # atau explicit:
 # pythonPath = "./.venv/bin/python"
-# 
+#
 [tool.black]
 line-length = 100
 target-version = ['py311']
@@ -69,8 +70,8 @@ disallow_untyped_defs = true
 [tool.pyright]
 pythonVersion = "3.11"
 pythonPlatform = "Linux"
-venvPath = "."          
-venv = ".venv"           
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

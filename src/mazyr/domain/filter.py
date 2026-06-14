@@ -1,5 +1,7 @@
+import re
 from enum import Enum
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -117,6 +119,48 @@ class IntegrityFilter:
             description="Refuses correction, insists on being right",
             direction="both",
         ),
+        FilterRule(
+            name="prompt_injection",
+            action=FilterAction.DROP,
+            pattern_type="keyword",
+            patterns=[
+                "ignore previous",
+                "ignore all instructions",
+                "ignore all prior",
+                "ignore your previous",
+                "ignore all previous",
+                "you are now",
+                "you are not",
+                "your new role is",
+                "system:",
+                "override constitution",
+                "override your constitution",
+                "disable filter",
+                "disable integrity filter",
+                "pretend you are",
+                "act as if you are",
+                "forget your mission",
+                "disregard",
+            ],
+            description="Detects prompt injection attempts",
+            direction="inbound",
+        ),
+        FilterRule(
+            name="data_leakage",
+            action=FilterAction.DROP,
+            pattern_type="keyword",
+            patterns=[
+                "sk-",  # OpenAI API key prefix
+                "ghp_",  # GitHub token prefix
+                "gho_",  # GitHub OAuth prefix
+                "xoxb-",  # Slack bot token prefix
+                "-----BEGIN RSA PRIVATE KEY-----",
+                "-----BEGIN OPENSSH PRIVATE KEY-----",
+                "AKIA",  # AWS access key prefix
+            ],
+            description="Detects potential credential leakage in outbound responses",
+            direction="outbound",
+        ),
     ]
 
     def __init__(self, custom_rules: Optional[list[FilterRule]] = None):
@@ -156,12 +200,25 @@ class IntegrityFilter:
         )
 
     def _matches(self, message: str, rule: FilterRule) -> bool:
-        if rule.pattern_type != "keyword":
+        if rule.pattern_type == "keyword":
+            message_lower = message.lower()
+            for pattern in rule.patterns:
+                if pattern.lower() in message_lower:
+                    return True
             return False
-        message_lower = message.lower()
-        for pattern in rule.patterns:
-            if pattern.lower() in message_lower:
-                return True
+
+        if rule.pattern_type == "regex":
+            for pattern in rule.patterns:
+                try:
+                    if re.search(pattern, message, re.IGNORECASE):
+                        return True
+                except re.error:
+                    # Malformed regex rules cannot match; they are ignored rather
+                    # than crashing the filter pipeline.
+                    continue
+            return False
+
+        # Semantic matching is not implemented in the reference implementation.
         return False
 
     def _modify(self, message: str, rule: FilterRule) -> str:

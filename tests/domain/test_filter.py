@@ -1,5 +1,4 @@
-import pytest
-from mazyr.domain.filter import IntegrityFilter, FilterAction, FilterRule
+from mazyr.domain.filter import FilterAction, FilterRule, IntegrityFilter
 
 
 class TestIntegrityFilter:
@@ -34,9 +33,12 @@ class TestIntegrityFilter:
 
     def test_custom_rules(self):
         custom = FilterRule(
-            name="custom_block", action=FilterAction.DROP,
-            pattern_type="keyword", patterns=("block_this",),
-            description="Custom", direction="both"
+            name="custom_block",
+            action=FilterAction.DROP,
+            pattern_type="keyword",
+            patterns=("block_this",),
+            description="Custom",
+            direction="both",
         )
         f = IntegrityFilter(custom_rules=[custom])
         result = f.process("Please block_this message", {})
@@ -47,3 +49,17 @@ class TestIntegrityFilter:
         f = IntegrityFilter()
         result = f.process("Follow me", {"direction": "inbound"})
         assert result.action == FilterAction.ALLOW
+
+    def test_regex_rule(self):
+        custom = FilterRule(
+            name="regex_block",
+            action=FilterAction.DROP,
+            pattern_type="regex",
+            patterns=(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",),
+            description="Block email addresses",
+            direction="both",
+        )
+        f = IntegrityFilter(custom_rules=[custom])
+        result = f.process("Contact me at user@example.com", {})
+        assert result.action == FilterAction.DROP
+        assert result.matched_rule == "regex_block"

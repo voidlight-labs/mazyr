@@ -2,7 +2,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock
 
-from mazyr.application.bootstrap import BootContext, Bootstrap
+from mazyr.application.bootstrap import Bootstrap
 from mazyr.domain.instance_config import InstanceConfig
 
 

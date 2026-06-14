@@ -1,5 +1,4 @@
 import pytest
-from dataclasses import FrozenInstanceError
 
 from mazyr.domain.identity import Identity, Mission
 

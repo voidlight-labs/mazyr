@@ -18,6 +18,7 @@ class WhatsAppAdapter:
 
     async def start(self):
         from playwright.async_api import async_playwright
+
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=True)
         self.context = await self.browser.new_context(user_data_dir=str(self.session_dir))
@@ -34,7 +35,7 @@ class WhatsAppAdapter:
     async def listen(self, handler: Callable):
         self.message_handler = handler
         while True:
-            messages = await self.page.query_selector_all('.message-in')
+            messages = await self.page.query_selector_all(".message-in")
             for msg in messages:
                 text = await msg.inner_text()
                 if text and self.message_handler:
@@ -44,5 +45,5 @@ class WhatsAppAdapter:
     async def stop(self):
         if self.browser:
             await self.browser.close()
-        if hasattr(self, 'playwright') and self.playwright:
+        if hasattr(self, "playwright") and self.playwright:
             await self.playwright.stop()

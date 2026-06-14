@@ -15,6 +15,7 @@ class RelayClient:
 
     async def connect(self):
         import websockets
+
         uri = f"{self.endpoint}/ws/{self.instance_id}"
         self.ws = await websockets.connect(uri)
         self.running = True
@@ -23,6 +24,7 @@ class RelayClient:
 
     async def _listen(self):
         import websockets
+
         while self.running:
             try:
                 message = await self.ws.recv()

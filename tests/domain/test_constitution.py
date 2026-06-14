@@ -1,5 +1,5 @@
 import pytest
-from mazyr.domain.constitution import Constitution, Law, ValidationResult
+from mazyr.domain.constitution import Constitution, Law
 
 
 class TestConstitution:

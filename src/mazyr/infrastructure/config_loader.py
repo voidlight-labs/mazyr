@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -6,6 +7,7 @@ import yaml
 from mazyr.domain.filter import FilterAction, FilterRule
 from mazyr.domain.identity import Identity, Mission
 from mazyr.domain.instance_config import InstanceConfig
+from mazyr.domain.tool_config import ToolRegistryConfig
 from mazyr.infrastructure.paths import MAZYR_HOME
 
 
@@ -23,13 +25,17 @@ class ConfigLoader:
             return None
 
         data = self._parse_markdown_frontmatter(path)
+        date_provisioned = data.get("date_provisioned")
+        if isinstance(date_provisioned, datetime):
+            date_provisioned = date_provisioned.isoformat()
+
         return Identity(
-            instance_name=data.get("instance_name", "Mazyr"),
-            species=data.get("species", "Mazyr"),
-            creator_name=data.get("creator", "Anonymous"),
+            instance_name=data.get("instance_name") or "Mazyr",
+            species=data.get("species") or "Mazyr",
+            creator_name=data.get("creator") or "Anonymous",
             creator_contact=data.get("creator_contact"),
-            date_provisioned=data.get("date_provisioned", ""),
-            vessel_type=data.get("vessel_type", "laptop"),
+            date_provisioned=date_provisioned or "",
+            vessel_type=data.get("vessel_type") or "laptop",
         )
 
     def load_mission(self, base_dir: str | Path | None = None) -> Optional[Mission]:
@@ -94,6 +100,16 @@ class ConfigLoader:
                 )
             )
         return rules
+
+    def load_tool_registry_config(self) -> ToolRegistryConfig:
+        """Load tool registry config from .mazyr/tool_registry.yaml"""
+        path = self.mazyr_dir / "tool_registry.yaml"
+        if not path.exists():
+            return ToolRegistryConfig()
+
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        return ToolRegistryConfig(**data)
 
     def _parse_markdown_frontmatter(self, path: Path) -> dict:
         """Parse YAML frontmatter from markdown file."""

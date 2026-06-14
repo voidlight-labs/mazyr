@@ -20,10 +20,12 @@ def mock_mission():
 @pytest.fixture
 def mock_constitution():
     from mazyr.domain.constitution import Constitution
+
     return Constitution()
 
 
 @pytest.fixture
 def mock_filter():
     from mazyr.domain.filter import IntegrityFilter
+
     return IntegrityFilter()

@@ -1,10 +1,8 @@
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from mazyr.infrastructure.config_loader import ConfigLoader
-from mazyr.infrastructure.paths import MAZYR_HOME
 
 
 class TestConfigLoader:

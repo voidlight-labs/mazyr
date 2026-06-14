@@ -1,11 +1,15 @@
-from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Identity(BaseModel):
     """Core Identity of a Mazyr instance. Validated using Pydantic as per MTS-05."""
+
+    model_config = ConfigDict(frozen=True)
+
     instance_name: str = Field(..., min_length=1, max_length=64)
-    species: str = Field(default="Mazyr", frozen=True)
+    species: str = Field(default="Mazyr")
     creator_name: str = Field(..., min_length=1, max_length=128)
     creator_contact: Optional[str] = Field(default=None, max_length=256)
     date_provisioned: str = Field(default="")
@@ -27,6 +31,7 @@ class Identity(BaseModel):
 
 class Mission(BaseModel):
     """Mission configuration. Validated using Pydantic as per MTS-05."""
+
     primary: str = Field(..., min_length=1, max_length=512)
     secondary: Optional[str] = Field(default=None, max_length=512)
     scope: list[str] = Field(default_factory=lambda: ["general"])

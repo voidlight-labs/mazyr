@@ -8,30 +8,24 @@ from mazyr.interfaces.cli import cli
 
 
 def _write_instance(base_dir: Path, telegram_token: str = "telegram-secret"):
-    (base_dir / "identity.md").write_text(
-        """---
+    (base_dir / "identity.md").write_text("""---
 instance_name: Aria
 creator: Khayren
 vessel_type: laptop
 ---
-"""
-    )
-    (base_dir / "mission.md").write_text(
-        """---
+""")
+    (base_dir / "mission.md").write_text("""---
 primary: Learn
 scope: general
 ---
-"""
-    )
-    (base_dir / "config.yaml").write_text(
-        f"""api_key: secret
+""")
+    (base_dir / "config.yaml").write_text(f"""api_key: secret
 base_url: https://api.example.test/v1
 model: test-model
 inference_preference: cloud
 sqlite_path: memory/mazyr.db
 telegram_bot_token: {telegram_token}
-"""
-    )
+""")
 
 
 def test_boot_daemon_receives_telegram_message(monkeypatch, tmp_path):
